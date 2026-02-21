@@ -90,13 +90,12 @@ const customersRef = collection(shopRef, 'customers');
 const transactionsRef = collection(shopRef, 'transactions');
 const usersRef = collection(shopRef, 'users');
 
-const DEFAULT_ADMIN_PHONE = '9953700112';
-const DEFAULT_ADMIN_PASSWORD = 'Megha@123';
+
 
 const ADMIN_USER: Omit<AppUser, 'id'> = {
   name: 'Megha Jain',
-  phone: import.meta.env.VITE_ADMIN_PHONE?.trim() || DEFAULT_ADMIN_PHONE,
-  password: import.meta.env.VITE_ADMIN_PASSWORD?.trim() || DEFAULT_ADMIN_PASSWORD,
+  phone: import.meta.env.VITE_ADMIN_PHONE?.trim(),
+  password: import.meta.env.VITE_ADMIN_PASSWORD?.trim(),
   role: 'ADMIN',
   approved: true
 };

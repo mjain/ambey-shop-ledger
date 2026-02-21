@@ -69,6 +69,5 @@ Balance is atomically updated in a Firestore transaction every time a transactio
 
 - Megha Jain is auto-seeded as the default admin user.
 - Admin phone/password are read from `VITE_ADMIN_PHONE` and `VITE_ADMIN_PASSWORD`.
-- If these env values are not set, defaults are used: `9953700112` / `Megha@123`.
 - Megha Jain should use **Login** directly (not Sign Up).
 - New users must use **Sign Up** and wait for admin approval.
