@@ -6,7 +6,6 @@ import {
   getDoc,
   getDocs,
   getFirestore,
-  orderBy,
   query,
   runTransaction,
   Timestamp,
@@ -150,18 +149,19 @@ export async function saveCustomer(input: SaveCustomerInput): Promise<string> {
 }
 
 async function recalculateCustomerBalance(customerId: string): Promise<void> {
-  const ledgerQuery = query(
-    transactionsRef,
-    where('customerId', '==', customerId),
-    orderBy('date', 'asc')
-  );
+  const ledgerQuery = query(transactionsRef, where('customerId', '==', customerId));
   const snapshot = await getDocs(ledgerQuery);
+  const orderedTransactions = [...snapshot.docs].sort((a, b) => {
+    const aDate = (a.data().date as Timestamp | undefined)?.toMillis() ?? 0;
+    const bDate = (b.data().date as Timestamp | undefined)?.toMillis() ?? 0;
+    return aDate - bDate;
+  });
 
   let runningBalance = 0;
   let lastActivity: Timestamp | null = null;
   const batch = writeBatch(db);
 
-  snapshot.docs.forEach((transactionDoc) => {
+  orderedTransactions.forEach((transactionDoc) => {
     const data = transactionDoc.data();
     const type = normalizeTransactionType(String(data.type ?? 'CREDIT'));
     const amount = Number(data.amount ?? 0);
@@ -251,19 +251,21 @@ export async function deleteTransaction(transactionId: string): Promise<void> {
 }
 
 export async function getTransactionsForCustomer(customerId: string): Promise<LedgerTransaction[]> {
-  const q = query(transactionsRef, where('customerId', '==', customerId), orderBy('date', 'desc'));
+  const q = query(transactionsRef, where('customerId', '==', customerId));
   const snapshot = await getDocs(q);
 
-  return snapshot.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      customerId: String(data.customerId),
-      type: normalizeTransactionType(String(data.type ?? 'CREDIT')),
-      amount: Number(data.amount ?? 0),
-      note: String(data.note ?? ''),
-      date: data.date as Timestamp,
-      balanceAfter: Number(data.balanceAfter ?? 0)
-    };
-  });
+  return snapshot.docs
+    .map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        customerId: String(data.customerId),
+        type: normalizeTransactionType(String(data.type ?? 'CREDIT')),
+        amount: Number(data.amount ?? 0),
+        note: String(data.note ?? ''),
+        date: data.date as Timestamp,
+        balanceAfter: Number(data.balanceAfter ?? 0)
+      };
+    })
+    .sort((a, b) => b.date.toMillis() - a.date.toMillis());
 }
