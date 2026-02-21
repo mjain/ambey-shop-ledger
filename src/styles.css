@@ -258,6 +258,21 @@ button {
   padding: 10px;
 }
 
+.approval-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.approval-actions button {
+  width: auto;
+}
+
+.reject-button {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+
 .approval-item div {
   display: grid;
   gap: 2px;

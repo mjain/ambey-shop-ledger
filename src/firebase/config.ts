@@ -93,8 +93,8 @@ const usersRef = collection(shopRef, 'users');
 
 const ADMIN_USER: Omit<AppUser, 'id'> = {
   name: 'Megha Jain',
-  phone: import.meta.env.VITE_ADMIN_PHONE?.trim(),
-  password: import.meta.env.VITE_ADMIN_PASSWORD?.trim(),
+  phone: import.meta.env.VITE_ADMIN_PHONE?.trim() ?? '',
+  password: import.meta.env.VITE_ADMIN_PASSWORD?.trim() ?? '',
 
   role: 'ADMIN',
   approved: true
@@ -222,6 +222,22 @@ export async function approveUser(userId: string): Promise<void> {
 
     tx.update(targetRef, { approved: true });
   });
+}
+
+export async function rejectUser(userId: string): Promise<void> {
+  const targetRef = doc(usersRef, userId);
+  const existing = await getDoc(targetRef);
+
+  if (!existing.exists()) {
+    throw new Error('User not found.');
+  }
+
+  const user = userFromDoc(existing.id, existing.data());
+  if (user.role === 'ADMIN') {
+    throw new Error('Admin user cannot be rejected.');
+  }
+
+  await deleteDoc(targetRef);
 }
 
 export async function getCustomers(searchTerm = ''): Promise<Customer[]> {

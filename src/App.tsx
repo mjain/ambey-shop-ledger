@@ -5,6 +5,7 @@ import {
   ensureAdminUser,
   getPendingUsers,
   loginUser,
+  rejectUser,
   signUpUser,
   type AppUser
 } from './firebase/config';
@@ -81,10 +82,19 @@ function App() {
     }
   }
 
-  async function handleApprove(userId: string) {
-    await approveUser(userId);
+  async function refreshPendingUsers() {
     const refreshed = await getPendingUsers();
     setPendingUsers(refreshed);
+  }
+
+  async function handleApprove(userId: string) {
+    await approveUser(userId);
+    await refreshPendingUsers();
+  }
+
+  async function handleReject(userId: string) {
+    await rejectUser(userId);
+    await refreshPendingUsers();
   }
 
   function handleLogout() {
@@ -159,9 +169,14 @@ function App() {
                   <strong>{pendingUser.name}</strong>
                   <small>{pendingUser.phone}</small>
                 </div>
-                <button className="save-button" onClick={() => handleApprove(pendingUser.id)} type="button">
-                  Approve
-                </button>
+                <div className="approval-actions">
+                  <button className="save-button" onClick={() => handleApprove(pendingUser.id)} type="button">
+                    Approve
+                  </button>
+                  <button className="reject-button" onClick={() => handleReject(pendingUser.id)} type="button">
+                    Reject
+                  </button>
+                </div>
               </div>
             ))}
           </div>
