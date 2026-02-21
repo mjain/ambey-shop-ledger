@@ -132,7 +132,7 @@ function App() {
 
           <div className="auth-note card">
             <strong>Admin approver</strong>
-            <p>Megha Jain (9953700112) approves new login requests.</p>
+            <p>Megha Jain approves new login requests.</p>
           </div>
         </section>
       </main>
