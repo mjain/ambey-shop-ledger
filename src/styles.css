@@ -1,0 +1,119 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  line-height: 1.4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f5f7fb;
+  color: #111;
+}
+
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+h1,
+h2 {
+  margin: 0 0 10px;
+}
+
+input,
+select,
+button {
+  width: 100%;
+  font-size: 1rem;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #d8dbe4;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+button {
+  border: none;
+  font-weight: 600;
+}
+
+.quick-actions,
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.in {
+  background: #daf8e6;
+  color: #046332;
+}
+
+.out {
+  background: #ffe2e2;
+  color: #8f1725;
+}
+
+.active {
+  outline: 3px solid #252525;
+}
+
+.save-button {
+  background: #0d6efd;
+  color: #fff;
+}
+
+.customer-list {
+  display: grid;
+  gap: 8px;
+}
+
+.customer-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f4f6fa;
+}
+
+.ledger-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 1fr 1fr;
+  gap: 8px;
+  font-size: 0.9rem;
+  padding: 8px 0;
+  border-bottom: 1px solid #ececec;
+}
+
+.ledger-header {
+  font-weight: 700;
+}
+
+.empty {
+  margin: 10px 0 0;
+  color: #666;
+}
+
+@media (max-width: 480px) {
+  .ledger-grid {
+    font-size: 0.78rem;
+    gap: 4px;
+  }
+}
