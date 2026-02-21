@@ -91,11 +91,11 @@ const transactionsRef = collection(shopRef, 'transactions');
 const usersRef = collection(shopRef, 'users');
 
 
-
 const ADMIN_USER: Omit<AppUser, 'id'> = {
   name: 'Megha Jain',
   phone: import.meta.env.VITE_ADMIN_PHONE?.trim(),
   password: import.meta.env.VITE_ADMIN_PASSWORD?.trim(),
+
   role: 'ADMIN',
   approved: true
 };
