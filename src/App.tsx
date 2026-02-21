@@ -54,7 +54,8 @@ function App() {
     setError('');
     setMessage('');
 
-    const formData = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const formData = new FormData(form);
     const phone = String(formData.get('phone') ?? '');
     const password = String(formData.get('password') ?? '');
 
@@ -67,14 +68,14 @@ function App() {
         });
         setMode('LOGIN');
         setMessage('Signup submitted. Ask Megha Jain to approve your login request.');
-        event.currentTarget.reset();
+        form.reset();
         return;
       }
 
       const loggedIn = await loginUser(phone, password);
       setUser(loggedIn);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(loggedIn));
-      event.currentTarget.reset();
+      form.reset();
     } catch (authError) {
       setError(authError instanceof Error ? authError.message : 'Something went wrong.');
     }
