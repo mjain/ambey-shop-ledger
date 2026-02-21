@@ -134,7 +134,6 @@ function App() {
           <div className="auth-note card">
             <strong>Admin approver</strong>
             <p>Megha Jain approves new login requests.</p>
-            <p>Admin login uses VITE_ADMIN_PHONE and VITE_ADMIN_PASSWORD from environment (no signup needed).</p>
           </div>
         </section>
       </main>
