@@ -171,6 +171,49 @@ button {
   padding: 8px 0;
 }
 
+.auth-card {
+  margin-top: 16px;
+}
+
+.auth-help {
+  color: #576074;
+}
+
+.auth-note {
+  background: #eef4ff;
+  border: 1px solid #dce8ff;
+}
+
+.admin-approval-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-approval-head button {
+  width: auto;
+}
+
+.approval-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #f4f6fa;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.approval-item div {
+  display: grid;
+  gap: 2px;
+}
+
+.approval-item button {
+  width: auto;
+}
+
 @media (max-width: 520px) {
   .ledger-grid {
     font-size: 0.75rem;
