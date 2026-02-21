@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import {
   collection,
+  getCountFromServer,
   deleteDoc,
   doc,
   getDoc,
@@ -64,11 +65,38 @@ export interface SaveTransactionInput {
   date: Date;
 }
 
+export type AppUserRole = 'ADMIN' | 'STAFF';
+
+export interface AppUser {
+  id: string;
+  name: string;
+  phone: string;
+  password: string;
+  role: AppUserRole;
+  approved: boolean;
+  createdAt?: Timestamp;
+}
+
+interface SignUpInput {
+  name: string;
+  phone: string;
+  password: string;
+}
+
 const SHOPS = collection(db, 'shops');
 const SHOP_ID = 'ambey-garments';
 const shopRef = doc(SHOPS, SHOP_ID);
 const customersRef = collection(shopRef, 'customers');
 const transactionsRef = collection(shopRef, 'transactions');
+const usersRef = collection(shopRef, 'users');
+
+const ADMIN_USER: Omit<AppUser, 'id'> = {
+  name: 'Megha Jain',
+  phone: '9953700112',
+  password: 'Megha@123',
+  role: 'ADMIN',
+  approved: true
+};
 
 function normalizeTransactionType(raw: string): TransactionType {
   if (raw === 'PAYMENT' || raw === 'OUT') {
@@ -87,6 +115,97 @@ function customerFromDoc(id: string, data: Record<string, unknown>): Customer {
     currentBalance: Number(data.currentBalance ?? 0),
     lastActivity: data.lastActivity as Timestamp | undefined
   };
+}
+
+function userFromDoc(id: string, data: Record<string, unknown>): AppUser {
+  return {
+    id,
+    name: String(data.name ?? ''),
+    phone: String(data.phone ?? ''),
+    password: String(data.password ?? ''),
+    role: data.role === 'ADMIN' ? 'ADMIN' : 'STAFF',
+    approved: Boolean(data.approved),
+    createdAt: data.createdAt as Timestamp | undefined
+  };
+}
+
+export async function ensureAdminUser(): Promise<void> {
+  const exists = await getCountFromServer(query(usersRef, where('phone', '==', ADMIN_USER.phone)));
+  if (exists.data().count > 0) {
+    return;
+  }
+
+  const adminRef = doc(usersRef);
+  await runTransaction(db, async (tx) => {
+    tx.set(adminRef, {
+      ...ADMIN_USER,
+      createdAt: Timestamp.now()
+    });
+  });
+}
+
+export async function signUpUser(input: SignUpInput): Promise<void> {
+  const name = input.name.trim();
+  const phone = input.phone.trim();
+  const password = input.password.trim();
+
+  if (!name || !phone || !password) {
+    throw new Error('Name, phone and password are required.');
+  }
+
+  const existing = await getCountFromServer(query(usersRef, where('phone', '==', phone)));
+  if (existing.data().count > 0) {
+    throw new Error('Phone number is already registered.');
+  }
+
+  const userRef = doc(usersRef);
+  await runTransaction(db, async (tx) => {
+    tx.set(userRef, {
+      name,
+      phone,
+      password,
+      role: 'STAFF',
+      approved: false,
+      createdAt: Timestamp.now()
+    });
+  });
+}
+
+export async function loginUser(phone: string, password: string): Promise<AppUser> {
+  const cleanPhone = phone.trim();
+  const cleanPassword = password.trim();
+  const snapshot = await getDocs(query(usersRef, where('phone', '==', cleanPhone), where('password', '==', cleanPassword)));
+
+  if (snapshot.empty) {
+    throw new Error('Invalid phone number or password.');
+  }
+
+  const user = userFromDoc(snapshot.docs[0].id, snapshot.docs[0].data());
+  if (user.role !== 'ADMIN' && !user.approved) {
+    throw new Error('Your login request is pending admin approval from Megha Jain.');
+  }
+
+  return user;
+}
+
+export async function getPendingUsers(): Promise<AppUser[]> {
+  const snapshot = await getDocs(query(usersRef, where('approved', '==', false)));
+  return snapshot.docs
+    .map((item) => userFromDoc(item.id, item.data()))
+    .sort((a, b) => (a.createdAt?.toMillis() ?? 0) - (b.createdAt?.toMillis() ?? 0));
+}
+
+export async function approveUser(userId: string): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const targetRef = doc(usersRef, userId);
+    const existing = await tx.get(targetRef);
+
+    if (!existing.exists()) {
+      throw new Error('User not found.');
+    }
+
+    tx.update(targetRef, { approved: true });
+  });
 }
 
 export async function getCustomers(searchTerm = ''): Promise<Customer[]> {

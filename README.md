@@ -25,6 +25,13 @@ npm run build
 ```text
 shops
   └── ambey-garments
+        ├── users
+        │     └── userId
+        │            name
+        │            phone
+        │            password
+        │            role (ADMIN | STAFF)
+        │            approved
         ├── customers
         │     └── customerId
         │            name
@@ -53,5 +60,5 @@ Balance is atomically updated in a Firestore transaction every time a transactio
 
 ## Notes
 
-- Auth is intentionally skipped in phase 1.
+- App now supports phone + password login with signup and admin approval flow.
 - PWA support includes `manifest.json` and `sw.js` registration.
