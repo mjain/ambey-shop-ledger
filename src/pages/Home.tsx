@@ -164,6 +164,13 @@ export function Home() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [parties, partySearch]);
 
+  const customerNameById = useMemo(() => {
+    return customers.reduce<Record<string, string>>((map, customer) => {
+      map[customer.id] = customer.name;
+      return map;
+    }, {});
+  }, [customers]);
+
   const totalOutstanding = useMemo(
     () => customers.reduce((total, customer) => total + Math.max(0, customer.currentBalance), 0),
     [customers]
@@ -185,6 +192,9 @@ export function Home() {
     const customerTotals: Record<string, number> = {};
     let creditTotal = 0;
     let paymentTotal = 0;
+    let cashPaymentTotal = 0;
+    let onlinePaymentTotal = 0;
+    let partyDirectPaymentTotal = 0;
 
     dateFilteredTransactions.forEach((transaction) => {
       const delta = transaction.type === 'CREDIT' ? transaction.amount : -transaction.amount;
@@ -193,6 +203,14 @@ export function Home() {
         creditTotal += transaction.amount;
       } else {
         paymentTotal += transaction.amount;
+        const mode = transaction.paymentMode ?? 'CASH';
+        if (mode === 'ONLINE') {
+          onlinePaymentTotal += transaction.amount;
+        } else if (mode === 'PARTY_DIRECT') {
+          partyDirectPaymentTotal += transaction.amount;
+        } else {
+          cashPaymentTotal += transaction.amount;
+        }
       }
     });
 
@@ -202,6 +220,9 @@ export function Home() {
     return {
       creditTotal,
       paymentTotal,
+      cashPaymentTotal,
+      onlinePaymentTotal,
+      partyDirectPaymentTotal,
       netMovement: creditTotal - paymentTotal,
       transactionCount: dateFilteredTransactions.length,
       topCustomerName: topCustomer?.name ?? 'N/A'
@@ -209,15 +230,23 @@ export function Home() {
   }, [customers, dateFilteredTransactions]);
 
   const groupedByDate = useMemo(() => {
-    const groups = new Map<string, { credit: number; payment: number; count: number }>();
+    const groups = new Map<string, { credit: number; payment: number; count: number; cash: number; online: number; partyDirect: number }>();
 
     dateFilteredTransactions.forEach((transaction) => {
       const key = transaction.date?.toDate?.().toLocaleDateString('en-IN') ?? '-';
-      const current = groups.get(key) ?? { credit: 0, payment: 0, count: 0 };
+      const current = groups.get(key) ?? { credit: 0, payment: 0, count: 0, cash: 0, online: 0, partyDirect: 0 };
       if (transaction.type === 'CREDIT') {
         current.credit += transaction.amount;
       } else {
         current.payment += transaction.amount;
+        const mode = transaction.paymentMode ?? 'CASH';
+        if (mode === 'ONLINE') {
+          current.online += transaction.amount;
+        } else if (mode === 'PARTY_DIRECT') {
+          current.partyDirect += transaction.amount;
+        } else {
+          current.cash += transaction.amount;
+        }
       }
       current.count += 1;
       groups.set(key, current);
@@ -427,6 +456,18 @@ export function Home() {
               <small>Transactions</small>
               <strong>{dashboardMetrics.transactionCount}</strong>
             </article>
+            <article className="metric-card">
+              <small>Cash received</small>
+              <strong>{formatAmount(dashboardMetrics.cashPaymentTotal)}</strong>
+            </article>
+            <article className="metric-card">
+              <small>Online received</small>
+              <strong>{formatAmount(dashboardMetrics.onlinePaymentTotal)}</strong>
+            </article>
+            <article className="metric-card">
+              <small>Direct to party</small>
+              <strong>{formatAmount(dashboardMetrics.partyDirectPaymentTotal)}</strong>
+            </article>
           </div>
 
           <p className="auth-help">Top due in selected range: <strong>{dashboardMetrics.topCustomerName}</strong></p>
@@ -437,6 +478,7 @@ export function Home() {
                 <strong>{item.date}</strong>
                 <span>Credit: {formatAmount(item.credit)}</span>
                 <span>Payment: {formatAmount(item.payment)}</span>
+                <span>Cash / Online / Party: {formatAmount(item.cash)} / {formatAmount(item.online)} / {formatAmount(item.partyDirect)}</span>
                 <span>Txns: {item.count}</span>
               </div>
             )) : <p className="auth-help">No transactions in this date range.</p>}
@@ -694,7 +736,9 @@ export function Home() {
               <span>{transaction.date?.toDate?.().toLocaleDateString() ?? '-'}</span>
               <span>
                 {transaction.note || transaction.type}
-                {transaction.type === 'CUSTOMER_DIRECT' ? ' (from customer payment)' : ''}
+                {transaction.type === 'CUSTOMER_DIRECT'
+                  ? ` (from ${customerNameById[transaction.customerId ?? ''] ?? 'customer'} payment)`
+                  : ''}
               </span>
               <span>{transaction.type === 'PURCHASE' ? formatAmount(transaction.amount) : '-'}</span>
               <span>{transaction.type !== 'PURCHASE' ? formatAmount(transaction.amount) : '-'}</span>
