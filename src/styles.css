@@ -288,3 +288,16 @@ button {
     gap: 4px;
   }
 }
+
+.nav-buttons-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.party-due {
+  background: #fff4de;
+  color: #92400e;
+}
+
+.party-ledger-grid {
+  grid-template-columns: 1.1fr 1.3fr 0.8fr 0.8fr 1fr;
+}
