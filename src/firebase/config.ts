@@ -1,18 +1,18 @@
 import { initializeApp } from 'firebase/app';
 import {
   collection,
+  deleteDoc,
   doc,
+  getDoc,
   getDocs,
   getFirestore,
-  increment,
   orderBy,
   query,
   runTransaction,
-  serverTimestamp,
   Timestamp,
-  where
+  where,
+  writeBatch
 } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -25,14 +25,17 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
-export type TransactionType = 'IN' | 'OUT';
+export type TransactionType = 'CREDIT' | 'PAYMENT';
 
 export interface Customer {
   id: string;
   name: string;
+  phone: string;
+  address: string;
+  notes: string;
   currentBalance: number;
+  lastActivity?: Timestamp;
 }
 
 export interface LedgerTransaction {
@@ -42,8 +45,24 @@ export interface LedgerTransaction {
   amount: number;
   note: string;
   date: Timestamp;
-  billImageUrl?: string;
   balanceAfter: number;
+}
+
+export interface SaveCustomerInput {
+  id?: string;
+  name: string;
+  phone: string;
+  address?: string;
+  notes?: string;
+}
+
+export interface SaveTransactionInput {
+  id?: string;
+  customerId: string;
+  type: TransactionType;
+  amount: number;
+  note?: string;
+  date: Date;
 }
 
 const SHOPS = collection(db, 'shops');
@@ -52,96 +71,198 @@ const shopRef = doc(SHOPS, SHOP_ID);
 const customersRef = collection(shopRef, 'customers');
 const transactionsRef = collection(shopRef, 'transactions');
 
+function normalizeTransactionType(raw: string): TransactionType {
+  if (raw === 'PAYMENT' || raw === 'OUT') {
+    return 'PAYMENT';
+  }
+  return 'CREDIT';
+}
+
+function customerFromDoc(id: string, data: Record<string, unknown>): Customer {
+  return {
+    id,
+    name: String(data.name ?? ''),
+    phone: String(data.phone ?? ''),
+    address: String(data.address ?? ''),
+    notes: String(data.notes ?? ''),
+    currentBalance: Number(data.currentBalance ?? 0),
+    lastActivity: data.lastActivity as Timestamp | undefined
+  };
+}
+
 export async function getCustomers(searchTerm = ''): Promise<Customer[]> {
   const snapshot = await getDocs(customersRef);
-  const allCustomers: Customer[] = snapshot.docs.map((d) => ({
-    id: d.id,
-    name: String(d.data().name ?? ''),
-    currentBalance: Number(d.data().currentBalance ?? 0)
-  }));
-
   const lowered = searchTerm.trim().toLowerCase();
-  return allCustomers
-    .filter((c) => c.name.toLowerCase().includes(lowered))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
 
-export async function createCustomer(name: string): Promise<string> {
-  const customerDoc = doc(customersRef);
-  await runTransaction(db, async (tx) => {
-    tx.set(customerDoc, {
-      name: name.trim(),
-      currentBalance: 0
-    });
-  });
-  return customerDoc.id;
-}
-
-export async function addTransaction(params: {
-  customerId: string;
-  type: TransactionType;
-  amount: number;
-  note: string;
-  billFile?: File;
-}): Promise<void> {
-  let billImageUrl = '';
-
-  if (params.billFile) {
-    const fileRef = ref(
-      storage,
-      `shops/${SHOP_ID}/bills/${params.customerId}/${Date.now()}-${params.billFile.name}`
+  return snapshot.docs
+    .map((d) => customerFromDoc(d.id, d.data()))
+    .filter((customer) =>
+      [customer.name, customer.phone, customer.address, customer.notes]
+        .join(' ')
+        .toLowerCase()
+        .includes(lowered)
     );
-    await uploadBytes(fileRef, params.billFile);
-    billImageUrl = await getDownloadURL(fileRef);
+}
+
+export async function getCustomer(customerId: string): Promise<Customer | null> {
+  const customerSnap = await getDoc(doc(customersRef, customerId));
+  if (!customerSnap.exists()) {
+    return null;
   }
 
-  const customerRef = doc(customersRef, params.customerId);
-  const transactionRef = doc(transactionsRef);
+  return customerFromDoc(customerSnap.id, customerSnap.data());
+}
+
+export async function saveCustomer(input: SaveCustomerInput): Promise<string> {
+  const trimmedName = input.name.trim();
+  if (!trimmedName) {
+    throw new Error('Customer name is required.');
+  }
+
+  const customerRef = input.id ? doc(customersRef, input.id) : doc(customersRef);
 
   await runTransaction(db, async (tx) => {
-    const customerSnap = await tx.get(customerRef);
-    if (!customerSnap.exists()) {
-      throw new Error('Customer does not exist.');
+    if (!input.id) {
+      tx.set(customerRef, {
+        name: trimmedName,
+        phone: input.phone.trim(),
+        address: input.address?.trim() ?? '',
+        notes: input.notes?.trim() ?? '',
+        currentBalance: 0
+      });
+      return;
     }
 
-    const currentBalance = Number(customerSnap.data().currentBalance ?? 0);
-    const delta = params.type === 'IN' ? params.amount : -params.amount;
-    const updatedBalance = currentBalance + delta;
+    const existing = await tx.get(customerRef);
+    if (!existing.exists()) {
+      throw new Error('Customer not found.');
+    }
 
     tx.update(customerRef, {
-      currentBalance: increment(delta)
-    });
-
-    tx.set(transactionRef, {
-      customerId: params.customerId,
-      type: params.type,
-      amount: params.amount,
-      note: params.note.trim(),
-      date: serverTimestamp(),
-      billImageUrl,
-      balanceAfter: updatedBalance
+      name: trimmedName,
+      phone: input.phone.trim(),
+      address: input.address?.trim() ?? '',
+      notes: input.notes?.trim() ?? ''
     });
   });
+
+  return customerRef.id;
+}
+
+async function recalculateCustomerBalance(customerId: string): Promise<void> {
+  const ledgerQuery = query(
+    transactionsRef,
+    where('customerId', '==', customerId),
+    orderBy('date', 'asc')
+  );
+  const snapshot = await getDocs(ledgerQuery);
+
+  let runningBalance = 0;
+  let lastActivity: Timestamp | null = null;
+  const batch = writeBatch(db);
+
+  snapshot.docs.forEach((transactionDoc) => {
+    const data = transactionDoc.data();
+    const type = normalizeTransactionType(String(data.type ?? 'CREDIT'));
+    const amount = Number(data.amount ?? 0);
+    const delta = type === 'CREDIT' ? amount : -amount;
+    runningBalance += delta;
+
+    const txnDate = data.date as Timestamp | undefined;
+    if (txnDate) {
+      lastActivity = txnDate;
+    }
+
+    batch.update(transactionDoc.ref, {
+      type,
+      balanceAfter: runningBalance
+    });
+  });
+
+  batch.update(doc(customersRef, customerId), {
+    currentBalance: runningBalance,
+    lastActivity
+  });
+
+  await batch.commit();
+}
+
+export async function deleteCustomer(customerId: string): Promise<void> {
+  const ledgerQuery = query(transactionsRef, where('customerId', '==', customerId));
+  const snapshot = await getDocs(ledgerQuery);
+  const batch = writeBatch(db);
+
+  snapshot.docs.forEach((transactionDoc) => {
+    batch.delete(transactionDoc.ref);
+  });
+
+  batch.delete(doc(customersRef, customerId));
+  await batch.commit();
+}
+
+export async function saveTransaction(input: SaveTransactionInput): Promise<string> {
+  if (!input.customerId) {
+    throw new Error('Customer is required.');
+  }
+  if (!input.amount || input.amount <= 0) {
+    throw new Error('Amount should be greater than zero.');
+  }
+
+  const transactionRef = input.id ? doc(transactionsRef, input.id) : doc(transactionsRef);
+  const payload = {
+    customerId: input.customerId,
+    type: input.type,
+    amount: input.amount,
+    note: input.note?.trim() ?? '',
+    date: Timestamp.fromDate(input.date)
+  };
+
+  if (input.id) {
+    await runTransaction(db, async (tx) => {
+      const existing = await tx.get(transactionRef);
+      if (!existing.exists()) {
+        throw new Error('Transaction not found.');
+      }
+      tx.update(transactionRef, payload);
+    });
+  } else {
+    await runTransaction(db, async (tx) => {
+      tx.set(transactionRef, payload);
+    });
+  }
+
+  await recalculateCustomerBalance(input.customerId);
+  return transactionRef.id;
+}
+
+export async function deleteTransaction(transactionId: string): Promise<void> {
+  const transactionRef = doc(transactionsRef, transactionId);
+  const snapshot = await getDoc(transactionRef);
+  if (!snapshot.exists()) {
+    return;
+  }
+
+  const customerId = String(snapshot.data().customerId ?? '');
+  await deleteDoc(transactionRef);
+
+  if (customerId) {
+    await recalculateCustomerBalance(customerId);
+  }
 }
 
 export async function getTransactionsForCustomer(customerId: string): Promise<LedgerTransaction[]> {
-  const q = query(
-    transactionsRef,
-    where('customerId', '==', customerId),
-    orderBy('date', 'desc')
-  );
-
+  const q = query(transactionsRef, where('customerId', '==', customerId), orderBy('date', 'desc'));
   const snapshot = await getDocs(q);
+
   return snapshot.docs.map((d) => {
     const data = d.data();
     return {
       id: d.id,
       customerId: String(data.customerId),
-      type: data.type as TransactionType,
-      amount: Number(data.amount),
+      type: normalizeTransactionType(String(data.type ?? 'CREDIT')),
+      amount: Number(data.amount ?? 0),
       note: String(data.note ?? ''),
       date: data.date as Timestamp,
-      billImageUrl: String(data.billImageUrl ?? ''),
       balanceAfter: Number(data.balanceAfter ?? 0)
     };
   });
