@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   deleteCustomer,
   deleteTransaction,
+  getAllTransactions,
   getCustomers,
   getTransactionsForCustomer,
   saveCustomer,
@@ -30,6 +31,14 @@ function formatDateInput(date?: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+function startOfDay(dateValue: string): number {
+  return new Date(`${dateValue}T00:00:00`).getTime();
+}
+
+function endOfDay(dateValue: string): number {
+  return new Date(`${dateValue}T23:59:59.999`).getTime();
+}
+
 export function Home() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
@@ -38,6 +47,13 @@ export function Home() {
   const [view, setView] = useState<View>({ name: 'dashboard' });
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState<LedgerTransaction[]>([]);
+  const [allTransactions, setAllTransactions] = useState<LedgerTransaction[]>([]);
+  const [fromDate, setFromDate] = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 6);
+    return formatDateInput(date);
+  });
+  const [toDate, setToDate] = useState(() => formatDateInput());
 
   async function reloadCustomers() {
     const list = await getCustomers();
@@ -45,8 +61,14 @@ export function Home() {
     return list;
   }
 
+  async function reloadAllTransactions() {
+    const list = await getAllTransactions();
+    setAllTransactions(list);
+    return list;
+  }
+
   useEffect(() => {
-    reloadCustomers().finally(() => setLoading(false));
+    Promise.all([reloadCustomers(), reloadAllTransactions()]).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -94,6 +116,61 @@ export function Home() {
     [customers]
   );
 
+  const dateFilteredTransactions = useMemo(() => {
+    const start = startOfDay(fromDate);
+    const end = endOfDay(toDate);
+
+    return allTransactions.filter((transaction) => {
+      const time = transaction.date?.toMillis?.() ?? 0;
+      return time >= start && time <= end;
+    });
+  }, [allTransactions, fromDate, toDate]);
+
+  const dashboardMetrics = useMemo(() => {
+    const customerTotals: Record<string, number> = {};
+    let creditTotal = 0;
+    let paymentTotal = 0;
+
+    dateFilteredTransactions.forEach((transaction) => {
+      const delta = transaction.type === 'CREDIT' ? transaction.amount : -transaction.amount;
+      customerTotals[transaction.customerId] = (customerTotals[transaction.customerId] ?? 0) + delta;
+      if (transaction.type === 'CREDIT') {
+        creditTotal += transaction.amount;
+      } else {
+        paymentTotal += transaction.amount;
+      }
+    });
+
+    const topCustomerId = Object.entries(customerTotals).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const topCustomer = customers.find((customer) => customer.id === topCustomerId);
+
+    return {
+      creditTotal,
+      paymentTotal,
+      netMovement: creditTotal - paymentTotal,
+      transactionCount: dateFilteredTransactions.length,
+      topCustomerName: topCustomer?.name ?? 'N/A'
+    };
+  }, [customers, dateFilteredTransactions]);
+
+  const groupedByDate = useMemo(() => {
+    const groups = new Map<string, { credit: number; payment: number; count: number }>();
+
+    dateFilteredTransactions.forEach((transaction) => {
+      const key = transaction.date?.toDate?.().toLocaleDateString('en-IN') ?? '-';
+      const current = groups.get(key) ?? { credit: 0, payment: 0, count: 0 };
+      if (transaction.type === 'CREDIT') {
+        current.credit += transaction.amount;
+      } else {
+        current.payment += transaction.amount;
+      }
+      current.count += 1;
+      groups.set(key, current);
+    });
+
+    return Array.from(groups.entries()).map(([date, stats]) => ({ date, ...stats }));
+  }, [dateFilteredTransactions]);
+
   async function openProfile(customer: Customer) {
     setView({ name: 'profile', customer });
     const ledger = await getTransactionsForCustomer(customer.id);
@@ -130,7 +207,7 @@ export function Home() {
     }
 
     await deleteCustomer(customer.id);
-    await reloadCustomers();
+    await Promise.all([reloadCustomers(), reloadAllTransactions()]);
     setView({ name: 'customers' });
   }
 
@@ -147,9 +224,8 @@ export function Home() {
       date: new Date(String(formData.get('date') ?? ''))
     });
 
-    const list = await reloadCustomers();
+    const [list, ledger] = await Promise.all([reloadCustomers(), getTransactionsForCustomer(customer.id), reloadAllTransactions()]);
     const updatedCustomer = list.find((item) => item.id === customer.id) ?? customer;
-    const ledger = await getTransactionsForCustomer(customer.id);
     setTransactions(ledger);
     setView({ name: 'profile', customer: updatedCustomer });
   }
@@ -160,17 +236,17 @@ export function Home() {
     }
 
     await deleteTransaction(transaction.id);
-    const list = await reloadCustomers();
+    const [list, ledger] = await Promise.all([reloadCustomers(), getTransactionsForCustomer(customer.id), reloadAllTransactions()]);
     const updatedCustomer = list.find((item) => item.id === customer.id) ?? customer;
-    const ledger = await getTransactionsForCustomer(customer.id);
     setTransactions(ledger);
     setView({ name: 'profile', customer: updatedCustomer });
   }
 
   return (
     <main className="container">
-      <header className="card nav-bar">
+      <header className="card nav-bar hero-card">
         <h1>Ambey Garments Ledger</h1>
+        <p>Track dues, payments and daily movement quickly.</p>
         <div className="nav-buttons">
           <button onClick={() => setView({ name: 'dashboard' })} type="button">Home</button>
           <button onClick={() => setView({ name: 'customers' })} type="button">Customers</button>
@@ -185,6 +261,49 @@ export function Home() {
           <div className="balance-highlight danger">
             <span>Total Outstanding</span>
             <strong>{formatAmount(totalOutstanding)}</strong>
+          </div>
+
+          <div className="date-filter-grid">
+            <label>
+              From
+              <input max={toDate} onChange={(event) => setFromDate(event.target.value)} type="date" value={fromDate} />
+            </label>
+            <label>
+              To
+              <input min={fromDate} onChange={(event) => setToDate(event.target.value)} type="date" value={toDate} />
+            </label>
+          </div>
+
+          <div className="stats-grid">
+            <article className="metric-card">
+              <small>Credit given</small>
+              <strong>{formatAmount(dashboardMetrics.creditTotal)}</strong>
+            </article>
+            <article className="metric-card">
+              <small>Payment received</small>
+              <strong>{formatAmount(dashboardMetrics.paymentTotal)}</strong>
+            </article>
+            <article className="metric-card">
+              <small>Net movement</small>
+              <strong>{formatAmount(dashboardMetrics.netMovement)}</strong>
+            </article>
+            <article className="metric-card">
+              <small>Transactions</small>
+              <strong>{dashboardMetrics.transactionCount}</strong>
+            </article>
+          </div>
+
+          <p className="auth-help">Top due in selected range: <strong>{dashboardMetrics.topCustomerName}</strong></p>
+
+          <div className="datewise-list">
+            {groupedByDate.length ? groupedByDate.map((item) => (
+              <div className="datewise-item" key={item.date}>
+                <strong>{item.date}</strong>
+                <span>Credit: {formatAmount(item.credit)}</span>
+                <span>Payment: {formatAmount(item.payment)}</span>
+                <span>Txns: {item.count}</span>
+              </div>
+            )) : <p className="auth-help">No transactions in this date range.</p>}
           </div>
 
           <input

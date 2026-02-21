@@ -404,3 +404,22 @@ export async function getTransactionsForCustomer(customerId: string): Promise<Le
     })
     .sort((a, b) => b.date.toMillis() - a.date.toMillis());
 }
+
+export async function getAllTransactions(): Promise<LedgerTransaction[]> {
+  const snapshot = await getDocs(transactionsRef);
+
+  return snapshot.docs
+    .map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        customerId: String(data.customerId),
+        type: normalizeTransactionType(String(data.type ?? 'CREDIT')),
+        amount: Number(data.amount ?? 0),
+        note: String(data.note ?? ''),
+        date: data.date as Timestamp,
+        balanceAfter: Number(data.balanceAfter ?? 0)
+      };
+    })
+    .sort((a, b) => b.date.toMillis() - a.date.toMillis());
+}
