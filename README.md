@@ -12,6 +12,8 @@ cp .env.example .env
 
 2. Add your Firebase values in `.env`.
 
+   Optional: configure admin bootstrap credentials using `VITE_ADMIN_PHONE` and `VITE_ADMIN_PASSWORD`.
+
 3. Install and run:
 
 ```bash
@@ -62,3 +64,10 @@ Balance is atomically updated in a Firestore transaction every time a transactio
 
 - App now supports phone + password login with signup and admin approval flow.
 - PWA support includes `manifest.json` and `sw.js` registration.
+
+## Admin login details
+
+- Megha Jain is auto-seeded as the default admin user.
+- Admin phone/password are read from `VITE_ADMIN_PHONE` and `VITE_ADMIN_PASSWORD`.
+- Megha Jain should use **Login** directly (not Sign Up).
+- New users must use **Sign Up** and wait for admin approval.

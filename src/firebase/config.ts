@@ -90,10 +90,12 @@ const customersRef = collection(shopRef, 'customers');
 const transactionsRef = collection(shopRef, 'transactions');
 const usersRef = collection(shopRef, 'users');
 
+
 const ADMIN_USER: Omit<AppUser, 'id'> = {
   name: 'Megha Jain',
-  phone: '9953700112',
-  password: 'Megha@123',
+  phone: import.meta.env.VITE_ADMIN_PHONE?.trim(),
+  password: import.meta.env.VITE_ADMIN_PASSWORD?.trim(),
+
   role: 'ADMIN',
   approved: true
 };
@@ -130,16 +132,30 @@ function userFromDoc(id: string, data: Record<string, unknown>): AppUser {
 }
 
 export async function ensureAdminUser(): Promise<void> {
-  const exists = await getCountFromServer(query(usersRef, where('phone', '==', ADMIN_USER.phone)));
-  if (exists.data().count > 0) {
+  const snapshot = await getDocs(query(usersRef, where('phone', '==', ADMIN_USER.phone)));
+
+  if (snapshot.empty) {
+    const adminRef = doc(usersRef);
+    await runTransaction(db, async (tx) => {
+      tx.set(adminRef, {
+        ...ADMIN_USER,
+        createdAt: Timestamp.now()
+      });
+    });
     return;
   }
 
-  const adminRef = doc(usersRef);
+  const existingAdminRef = snapshot.docs[0].ref;
   await runTransaction(db, async (tx) => {
-    tx.set(adminRef, {
-      ...ADMIN_USER,
-      createdAt: Timestamp.now()
+    const existing = await tx.get(existingAdminRef);
+    if (!existing.exists()) {
+      return;
+    }
+
+    tx.update(existingAdminRef, {
+      name: ADMIN_USER.name,
+      role: 'ADMIN',
+      approved: true
     });
   });
 }
